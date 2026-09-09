@@ -1,0 +1,108 @@
+1. Create project + models folder
+
+You download the Matcha‑TTS inference checkpoint and place it here:
+Code
+
+mkdir -p Matcha-TTS/models
+# Download "emoji-hri-paige-inference.ckpt" into this folder
+
+Source:
+https://drive.google.com/drive/folders/1BBgJCF0nSaO3V53BZ8WdD6rjH63Ci2k2
+2. Clone your project
+Code
+
+git clone git@github.com:rosielab/do_you_feel_me.git
+
+3. Create environment
+Code
+
+conda create -n emojivoice python=3.11 -y
+conda activate emojivoice
+
+If using micromamba:
+Code
+
+eval "$(micromamba shell hook --shell bash)"
+micromamba activate emojivoice
+
+4. Install system dependencies (FFmpeg libs)
+Code
+
+sudo apt-get update
+sudo apt-get install -y \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libavfilter-dev \
+    libswscale-dev \
+    libswresample-dev \
+    pkg-config
+
+5. Install Matcha‑TTS
+
+Inside the Matcha‑TTS repo:
+Code
+
+cd Matcha-TTS
+pip install -e .
+
+Then install the pip version (needed for some imports):
+Code
+
+pip install matcha-tts
+
+Then reinstall the GitHub version (this ensures latest fixes):
+Code
+
+pip install git+https://github.com/shivammehta25/Matcha-TTS.git
+
+6. Clean ROS workspace (remove old Matcha copies)
+Code
+
+rm -rf ~/vizij_project/ros_ws/src/do_you_feel_me/matcha
+rm -f ~/vizij_project/ros_ws/src/do_you_feel_me/setup.py
+rm -f ~/vizij_project/ros_ws/src/do_you_feel_me/pyproject.toml
+rm -f ~/vizij_project/ros_ws/src/do_you_feel_me/setup.cfg
+
+7. Install Python dependencies
+Code
+
+pip install pynput
+pip install wavio
+pip install emoji
+pip install sounddevice
+pip install soundfile
+pip install "langchain-ollama==0.1.0"
+pip install "langchain==0.1.20"
+
+8. Install Ollama + model
+
+Run the model once:
+Code
+
+ollama run llama3.2:1b
+
+🎤 Running the demos
+TTS‑only demo
+Code
+
+python3 tts_synthethise.py
+
+You type text → select emoji → audio plays → WAV saved.
+Storytelling demo (LLM + TTS)
+
+Start Ollama model:
+Code
+
+ollama run llama3.2:1b
+
+Then run:
+Code
+
+python3 feel_me.py
+
+You type the first sentence → robot continues the story.
+I have added another prompt (commented out) that only gives a story (the robot),
+so if the user types "give me a sad story with a happy face" it responds. But not working
+well yet.
