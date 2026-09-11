@@ -22,9 +22,17 @@ from matcha.utils.utils import (
     assert_model_downloaded,
 )
 
+#robot
+#TTS_MODEL_PATH = (
+#    "/home/nvidia/sara_vizij/do_you_feel_me/"
+#    "Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
+#)
 
+#sara's computer
+
+#robot
 TTS_MODEL_PATH = (
-    "/home/nvidia/sara_vizij/do_you_feel_me/"
+    "/home/emorobcare/vizij_project/do_you_feel_me/"
     "Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
 )
 
