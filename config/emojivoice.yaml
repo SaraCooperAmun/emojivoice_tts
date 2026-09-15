@@ -1,0 +1,4 @@
+tts_node:
+  ros__parameters:
+    emojivoice_python: "/home/emorobcare/.local/share/mamba/envs/emojivoice/bin/python"
+    tts_model_path: "/home/emorobcare/vizij_project/do_you_feel_me/Matcha-TTS/models/emoji-hri-paige-inference.ckpt"

@@ -21,25 +21,6 @@ from rclpy.node import Node
 from std_msgs.msg import Bool, String
 from communication_skills.action import Say
 
-
-# ==============================================================
-# EmojiVoice Python environment
-# ==============================================================
-
-# EMOJIVOICE_PYTHON = (
-#     "/home/emorobcare/.local/share/mamba/envs/emojivoice/bin/python"
-# )
-
-#if you use python env
-#EMOJIVOICE_PYTHON = (
-#    "/home/nvidia/sara_vizij/do_you_feel_me/emojivoice_env/bin/python"
-#)
-
-#if you used mamba
-EMOJIVOICE_PYTHON = (
-     "/home/emorobcare/.local/share/mamba/envs/emojivoice/bin/python"
- )
-
 WORKER_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "emojivoice_worker.py",
@@ -73,7 +54,15 @@ class TtsNode(Node):
         # ----------------------------------------------------------
         # Parameters
         # ----------------------------------------------------------
+        self.declare_parameter(
+            'emojivoice_python',
+            ''
+        )
 
+        self.declare_parameter(
+            'tts_model_path',
+            ''
+        )
         self.declare_parameter("frame_id", "")
         self.declare_parameter("language", "en")
 
@@ -94,7 +83,26 @@ class TtsNode(Node):
             self.get_logger().warning(
                 f"EmojiVoice uses English, but language='{self._language}'"
             )
+        self.emojivoice_python = (
+            self.get_parameter('emojivoice_python')
+            .get_parameter_value()
+            .string_value
+        )
 
+        self.tts_model_path = (
+            self.get_parameter('tts_model_path')
+            .get_parameter_value()
+            .string_value
+        )
+        if not self.emojivoice_python:
+            raise RuntimeError(
+                'Parameter "emojivoice_python" is required.'
+            )
+
+        if not self.tts_model_path:
+            raise RuntimeError(
+                'Parameter "tts_model_path" is required.'
+            )
         # ----------------------------------------------------------
         # Robot speaking state
         # ----------------------------------------------------------
@@ -134,8 +142,10 @@ class TtsNode(Node):
 
         self.worker = subprocess.Popen(
             [
-                EMOJIVOICE_PYTHON,
+                self.emojivoice_python,
                 WORKER_PATH,
+                '--model-path',
+                self.tts_model_path,
             ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

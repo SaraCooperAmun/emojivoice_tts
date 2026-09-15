@@ -6,7 +6,7 @@ import json
 import torch
 import torch.serialization
 import numpy as np
-
+import argparse
 from omegaconf import DictConfig, ListConfig
 from omegaconf.base import ContainerMetadata
 
@@ -20,20 +20,6 @@ from matcha.utils.utils import (
     get_user_data_dir,
     intersperse,
     assert_model_downloaded,
-)
-
-#robot
-#TTS_MODEL_PATH = (
-#    "/home/nvidia/sara_vizij/do_you_feel_me/"
-#    "Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
-#)
-
-#sara's computer
-
-#robot
-TTS_MODEL_PATH = (
-    "/home/emorobcare/vizij_project/do_you_feel_me/"
-    "Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
 )
 
 VOCODER_NAME = "hifigan_univ_v1"
@@ -53,20 +39,19 @@ TTS_TEMPERATURE = 0.667
 
 SAMPLE_RATE = 22050
 
-EMOTION_TO_SPEAKER = {
-    "love": 107,
-    "angry": 58,
-    "cool": 79,
-    "sad": 103,
-    "annoyed": 66,
-    "happy": 18,
-    "neutral": 12,
-    "laughing": 15,
-    "surprised": 54,
-    "embarrassed": 22,
-    "thinking": 17,
+SPEAKER_IDS = {
+    "107": 107,
+    "58": 58,
+    "79": 79,
+    "103": 103,
+    "66": 66,
+    "18": 18,
+    "12": 12,
+    "15": 15,
+    "54": 54,
+    "22": 22,
+    "17": 17,
 }
-
 
 torch.serialization.add_safe_globals([
     DictConfig,
@@ -80,9 +65,9 @@ torch.cuda.is_available = lambda: False
 DEVICE = "cpu"
 
 
-def load_matcha():
+def load_matcha(model_path):
     model = MatchaTTS.load_from_checkpoint(
-        TTS_MODEL_PATH,
+        model_path,
         map_location=torch.device("cpu"),
         weights_only=False,
     )
@@ -108,11 +93,11 @@ def load_hifigan(path):
     return vocoder
 
 
-def load_models():
+def load_models(model_path):
 
     print("Loading Matcha-TTS...", flush=True)
 
-    tts = load_matcha()
+    tts = load_matcha(model_path)
 
     print("Checking HiFiGAN...", flush=True)
 
@@ -176,9 +161,9 @@ def synthesize(
     emotion,
 ):
 
-    speaker_id = EMOTION_TO_SPEAKER.get(
-        emotion.lower(),
-        EMOTION_TO_SPEAKER["neutral"],
+    speaker_id = SPEAKER_IDS.get(
+        emotion,
+        SPEAKER_IDS["12"],
     )
 
     x, x_lengths = process_text(text)
@@ -216,8 +201,17 @@ def synthesize(
 
 def main():
 
-    tts, vocoder, denoiser = load_models()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--model-path',
+        required=True,
+    )
+    args = parser.parse_args()
 
+    tts, vocoder, denoiser = load_models(
+        args.model_path
+    )
+    
     for line in sys.stdin:
 
         line = line.strip()

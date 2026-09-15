@@ -15,7 +15,6 @@ Dialogue Manager
 emojivoice_tts ROS node
       │
       ├── Parse voice expression
-      │
       ├── Send text + emotion
       │
       ▼
@@ -88,11 +87,9 @@ Your EmojiVoice installation should contain something similar to:
 
 ```text
 <EMOJIVOICE_DIR>/
-
 ├── Matcha-TTS/
 │   └── models/
 │       └── emoji-hri-paige-inference.ckpt
-│
 └── ...
 ```
 
@@ -120,7 +117,6 @@ Then copy `tts_synthesise.py` into the root of your EmojiVoice installation:
 
 ```text
 <EMOJIVOICE_DIR>/
-
 ├── tts_synthesise.py
 ├── Matcha-TTS/
 └── ...
@@ -138,30 +134,48 @@ This provides a simple way to verify that EmojiVoice and the model are working c
 
 ---
 
-## 4. EmojiVoice paths
+## 4. EmojiVoice configuration
 
-Currently, the EmojiVoice Python environment and model paths are configured directly in the package.
+The EmojiVoice Python environment and model path are configured using a ROS 2 YAML configuration file.
 
-In `tts_node.py`, the EmojiVoice Python interpreter is currently specified with:
+The configuration file is:
 
-```python
-EMOJIVOICE_PYTHON = (
-    "/home/nvidia/sara_vizij/do_you_feel_me/emojivoice_env/bin/python"
-)
+```text
+config/emojivoice.yaml
 ```
 
-The model path is currently specified in `emojivoice_worker.py`:
+It contains:
 
-```python
-TTS_MODEL_PATH = (
-    "/home/nvidia/sara_vizij/do_you_feel_me/"
-    "Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
-)
+```yaml
+tts_node:
+  ros__parameters:
+    emojivoice_python: "/path/to/emojivoice/bin/python"
+    tts_model_path: "/path/to/Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
 ```
 
-These paths are **machine-specific** and may need to be changed when moving the package between the development PC and the robot.
+For example:
 
-A ROS 2 configuration-based solution can be added in the future so that these paths do not need to be changed in the source code.
+```yaml
+tts_node:
+  ros__parameters:
+    emojivoice_python: "/home/emorobcare/.local/share/mamba/envs/emojivoice/bin/python"
+    tts_model_path: "/home/emorobcare/vizij_project/do_you_feel_me/Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
+```
+
+### Changing the paths
+
+When moving the package to another machine, change these two parameters:
+
+```yaml
+emojivoice_python: "/path/to/emojivoice/bin/python"
+tts_model_path: "/path/to/Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
+```
+
+No source-code changes are required.
+
+The worker receives the model path as a command-line argument, while the ROS node starts the worker using the configured EmojiVoice Python interpreter.
+
+The worker path itself does not need to be configured because `emojivoice_worker.py` is located relative to the ROS package.
 
 ---
 
@@ -171,7 +185,6 @@ Whenever the package is changed:
 
 ```bash
 cd ~/vizij_project/ros_ws
-
 source /opt/ros/jazzy/setup.bash
 
 colcon build --packages-select emojivoice_tts --symlink-install
@@ -183,11 +196,20 @@ source install/setup.bash
 
 ## 6. Start EmojiVoice TTS
 
-Run:
+The recommended way to start the node is using the ROS 2 launch file:
 
 ```bash
-ros2 run emojivoice_tts tts_node
+ros2 launch emojivoice_tts emojivoice_tts.launch.py
 ```
+
+The launcher:
+
+1. Starts the `tts_node` ROS node.
+2. Loads `config/emojivoice.yaml`.
+3. Provides the EmojiVoice Python environment path.
+4. Provides the EmojiVoice model path.
+5. Starts the EmojiVoice worker.
+6. Loads Matcha-TTS and HiFiGAN.
 
 The node provides:
 
@@ -370,8 +392,11 @@ For example:
 
 ```text
 Hello,
+
 how
+
 are
+
 you?
 ```
 
@@ -447,7 +472,7 @@ The `/tts/speech` message is therefore published before playback starts.
 
 This allows the Vizij side to receive the text and duration before the corresponding audio begins.
 
-Note: THIS WILL BE FIXED BASED ON VISEME BASED ARCHITECTURE. 
+Note: THIS WILL BE FIXED BASED ON VISEME BASED ARCHITECTURE.
 
 ### Playback delay
 
@@ -469,10 +494,15 @@ Main files:
 
 ```text
 emojivoice_tts/
-
 ├── __init__.py
 ├── tts_node.py
 └── emojivoice_worker.py
+
+config/
+└── emojivoice.yaml
+
+launch/
+└── emojivoice_tts.launch.py
 ```
 
 ### `tts_node.py`
@@ -499,9 +529,20 @@ Responsible for:
 
 * Matcha-TTS
 * HiFiGAN
-* speaker/emotion mapping
+* speaker ID selection
 * audio generation
 * returning generated audio and duration
+
+### `config/emojivoice.yaml`
+
+Contains machine-specific configuration:
+
+* EmojiVoice Python interpreter
+* EmojiVoice Matcha-TTS model path
+
+### `launch/emojivoice_tts.launch.py`
+
+Starts `tts_node` and loads the EmojiVoice configuration.
 
 ---
 
@@ -526,7 +567,11 @@ Python 3.11
 
 Do **not** change the ROS 2 launcher to Python 3.11.
 
-The EmojiVoice worker should continue to run using the configured EmojiVoice Python environment.
+The EmojiVoice worker continues to run using the Python interpreter specified by:
+
+```yaml
+emojivoice_python: "/path/to/emojivoice/bin/python"
+```
 
 ---
 
@@ -544,6 +589,12 @@ Make sure the EmojiVoice node is providing the action.
 
 ```bash
 ros2 node list
+```
+
+The node should appear as:
+
+```text
+/tts_node
 ```
 
 ### Check speech metadata

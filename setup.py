@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+import os 
+from glob import glob
 
 package_name = "emojivoice_tts"
 
@@ -19,6 +21,14 @@ setup(
         (
             "share/" + package_name,
             ["package.xml"],
+        ),
+        (
+            os.path.join("share", "emojivoice_tts", "launch"),
+            glob("launch/*.launch.py"),
+        ),
+        (
+            os.path.join("share", "emojivoice_tts", "config"),
+            glob("config/*.yaml"),
         ),
     ],
     install_requires=["setuptools"],
