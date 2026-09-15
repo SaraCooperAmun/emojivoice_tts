@@ -1,14 +1,9 @@
 #!/home/emorobcare/.local/share/mamba/envs/emojivoice/bin/python
 
-import sys
-import json
-
-import torch
-import torch.serialization
-import numpy as np
 import argparse
-from omegaconf import DictConfig, ListConfig
-from omegaconf.base import ContainerMetadata
+import base64
+import json
+import sys
 
 from matcha.hifigan.config import v1
 from matcha.hifigan.denoiser import Denoiser
@@ -17,21 +12,28 @@ from matcha.hifigan.models import Generator as HiFiGAN
 from matcha.models.matcha_tts import MatchaTTS
 from matcha.text import text_to_sequence
 from matcha.utils.utils import (
+    assert_model_downloaded,
     get_user_data_dir,
     intersperse,
-    assert_model_downloaded,
 )
+import numpy as np
 
-VOCODER_NAME = "hifigan_univ_v1"
+from omegaconf import DictConfig, ListConfig
+from omegaconf.base import ContainerMetadata
+
+import torch
+import torch.serialization
+
+VOCODER_NAME = 'hifigan_univ_v1'
 
 VOCODER_URLS = {
-    "hifigan_univ_v1": (
-        "https://github.com/shivammehta25/Matcha-TTS-checkpoints/"
-        "releases/download/v1.0/g_02500000"
+    'hifigan_univ_v1': (
+        'https://github.com/shivammehta25/Matcha-TTS-checkpoints/'
+        'releases/download/v1.0/g_02500000'
     )
 }
 
-LANGUAGE = "en"
+LANGUAGE = 'en'
 
 STEPS = 10
 SPEAKING_RATE = 0.8
@@ -40,17 +42,17 @@ TTS_TEMPERATURE = 0.667
 SAMPLE_RATE = 22050
 
 SPEAKER_IDS = {
-    "107": 107,
-    "58": 58,
-    "79": 79,
-    "103": 103,
-    "66": 66,
-    "18": 18,
-    "12": 12,
-    "15": 15,
-    "54": 54,
-    "22": 22,
-    "17": 17,
+    '107': 107,
+    '58': 58,
+    '79': 79,
+    '103': 103,
+    '66': 66,
+    '18': 18,
+    '12': 12,
+    '15': 15,
+    '54': 54,
+    '22': 22,
+    '17': 17,
 }
 
 torch.serialization.add_safe_globals([
@@ -59,16 +61,16 @@ torch.serialization.add_safe_globals([
     ContainerMetadata,
 ])
 
-torch.set_default_device("cpu")
+torch.set_default_device('cpu')
 torch.cuda.is_available = lambda: False
 
-DEVICE = "cpu"
+DEVICE = 'cpu'
 
 
 def load_matcha(model_path):
     model = MatchaTTS.load_from_checkpoint(
         model_path,
-        map_location=torch.device("cpu"),
+        map_location=torch.device('cpu'),
         weights_only=False,
     )
     model.eval()
@@ -84,7 +86,7 @@ def load_hifigan(path):
         torch.load(
             path,
             map_location=DEVICE,
-        )["generator"]
+        )['generator']
     )
 
     vocoder.eval()
@@ -95,11 +97,11 @@ def load_hifigan(path):
 
 def load_models(model_path):
 
-    print("Loading Matcha-TTS...", flush=True)
+    print('Loading Matcha-TTS...', flush=True)
 
     tts = load_matcha(model_path)
 
-    print("Checking HiFiGAN...", flush=True)
+    print('Checking HiFiGAN...', flush=True)
 
     save_dir = get_user_data_dir()
     vocoder_path = save_dir / VOCODER_NAME
@@ -109,7 +111,7 @@ def load_models(model_path):
         VOCODER_URLS[VOCODER_NAME],
     )
 
-    print("Loading HiFiGAN...", flush=True)
+    print('Loading HiFiGAN...', flush=True)
 
     vocoder = load_hifigan(
         str(vocoder_path)
@@ -117,10 +119,10 @@ def load_models(model_path):
 
     denoiser = Denoiser(
         vocoder,
-        mode="zeros",
+        mode='zeros',
     )
 
-    print("EmojiVoice models loaded.", flush=True)
+    print('EmojiVoice models loaded.', flush=True)
 
     return tts, vocoder, denoiser
 
@@ -128,7 +130,7 @@ def load_models(model_path):
 def process_text(text):
 
     cleaners = {
-        "en": "english_cleaners2"
+        'en': 'english_cleaners2'
     }
 
     x = torch.tensor(
@@ -163,7 +165,7 @@ def synthesize(
 
     speaker_id = SPEAKER_IDS.get(
         emotion,
-        SPEAKER_IDS["12"],
+        SPEAKER_IDS['12'],
     )
 
     x, x_lengths = process_text(text)
@@ -184,7 +186,7 @@ def synthesize(
     )
 
     audio = vocoder(
-        output["mel"]
+        output['mel']
     ).clamp(-1, 1)
 
     audio = denoiser(
@@ -211,7 +213,7 @@ def main():
     tts, vocoder, denoiser = load_models(
         args.model_path
     )
-    
+
     for line in sys.stdin:
 
         line = line.strip()
@@ -223,10 +225,10 @@ def main():
 
             request = json.loads(line)
 
-            text = request["text"]
+            text = request['text']
             emotion = request.get(
-                "emotion",
-                "neutral",
+                'emotion',
+                'neutral',
             )
 
             audio, duration = synthesize(
@@ -239,17 +241,16 @@ def main():
 
             # Send binary audio through stdout is inconvenient,
             # so encode float32 samples as base64.
-            import base64
 
             audio_bytes = audio.tobytes()
 
             response = {
-                "ok": True,
-                "duration": duration,
-                "sample_rate": SAMPLE_RATE,
-                "audio": base64.b64encode(
+                'ok': True,
+                'duration': duration,
+                'sample_rate': SAMPLE_RATE,
+                'audio': base64.b64encode(
                     audio_bytes
-                ).decode("ascii"),
+                ).decode('ascii'),
             }
 
             print(
@@ -261,12 +262,12 @@ def main():
 
             print(
                 json.dumps({
-                    "ok": False,
-                    "error": str(exc),
+                    'ok': False,
+                    'error': str(exc),
                 }),
                 flush=True,
             )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

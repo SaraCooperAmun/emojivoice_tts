@@ -620,3 +620,48 @@ Speech emotion: '107'
 ```
 
 and word-level feedback during playback.
+
+## Testing
+
+Run the package tests from the ROS 2 workspace:
+
+```bash
+cd ~/vizij_project/ros_ws
+
+colcon test --packages-select emojivoice_tts
+colcon test-result --verbose
+```
+
+The test suite includes:
+
+* Python unit tests for `TtsNode`
+* `flake8` code-style checks
+* `pep257` docstring checks
+
+To run the tests after rebuilding the package:
+
+```bash
+colcon build --packages-select emojivoice_tts
+source install/setup.bash
+
+colcon test --packages-select emojivoice_tts
+colcon test-result --verbose
+```
+
+If a linting test fails, the checks can also be run directly from the package source directory:
+
+```bash
+cd ~/vizij_project/ros_ws/src/emojivoice_tts
+```
+
+Run `flake8`:
+
+```bash
+python3 -m flake8 emojivoice_tts
+```
+
+Run `pep257`:
+
+```bash
+python3 -m ament_pep257.main emojivoice_tts launch test
+```

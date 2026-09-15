@@ -4,12 +4,13 @@ import base64
 import json
 import os
 import re
+import subprocess
 import threading
 import time
-import subprocess
+
+from communication_skills.action import Say
 
 import numpy as np
-import sounddevice as sd
 
 import rclpy
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -18,12 +19,13 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
+import sounddevice as sd
+
 from std_msgs.msg import Bool, String
-from communication_skills.action import Say
 
 WORKER_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "emojivoice_worker.py",
+    'emojivoice_worker.py',
 )
 
 
@@ -32,24 +34,24 @@ WORKER_PATH = os.path.join(
 # ==============================================================
 
 EMOJI_MAPPING = {
-    "😍": 107,
-    "😡": 58,
-    "😎": 79,
-    "😭": 103,
-    "🙄": 66,
-    "😁": 18,
-    "🙂": 12,
-    "🤣": 15,
-    "😮": 54,
-    "😅": 22,
-    "🤔": 17,
+    '😍': 107,
+    '😡': 58,
+    '😎': 79,
+    '😭': 103,
+    '🙄': 66,
+    '😁': 18,
+    '🙂': 12,
+    '🤣': 15,
+    '😮': 54,
+    '😅': 22,
+    '🤔': 17,
 }
 
 
 class TtsNode(Node):
 
     def __init__(self):
-        super().__init__("tts_node")
+        super().__init__('tts_node')
 
         # ----------------------------------------------------------
         # Parameters
@@ -63,23 +65,23 @@ class TtsNode(Node):
             'tts_model_path',
             ''
         )
-        self.declare_parameter("frame_id", "")
-        self.declare_parameter("language", "en")
+        self.declare_parameter('frame_id', '')
+        self.declare_parameter('language', 'en')
 
         self.frame_id = (
-            self.get_parameter("frame_id")
+            self.get_parameter('frame_id')
             .get_parameter_value()
             .string_value
         )
 
         self._language = (
-            self.get_parameter("language")
+            self.get_parameter('language')
             .get_parameter_value()
             .string_value
         )
 
         # EmojiVoice currently uses English.
-        if self._language != "en":
+        if self._language != 'en':
             self.get_logger().warning(
                 f"EmojiVoice uses English, but language='{self._language}'"
             )
@@ -111,7 +113,7 @@ class TtsNode(Node):
 
         self.voice_detected_sub = self.create_subscription(
             Bool,
-            "/robot_speaking",
+            '/robot_speaking',
             self.on_robot_speaking,
             1,
         )
@@ -122,7 +124,7 @@ class TtsNode(Node):
 
         self.speech_publisher = self.create_publisher(
             String,
-            "/tts/speech",
+            '/tts/speech',
             10,
         )
 
@@ -137,7 +139,7 @@ class TtsNode(Node):
         # ----------------------------------------------------------
 
         self.get_logger().info(
-            "Starting EmojiVoice worker..."
+            'Starting EmojiVoice worker...'
         )
 
         self.worker = subprocess.Popen(
@@ -168,7 +170,7 @@ class TtsNode(Node):
         self._action_server = ActionServer(
             self,
             Say,
-            "/tts/say",
+            '/tts/say',
             execute_callback=self.execute_callback,
             goal_callback=self.goal_callback,
             handle_accepted_callback=self.handle_accepted_callback,
@@ -177,27 +179,27 @@ class TtsNode(Node):
         )
 
         self.get_logger().info(
-            "=============================================="
+            '=============================================='
         )
 
         self.get_logger().info(
-            "EmojiVoice TTS ROS node started"
+            'EmojiVoice TTS ROS node started'
         )
 
         self.get_logger().info(
-            "  Say action:      /tts/say"
+            '  Say action:      /tts/say'
         )
 
         self.get_logger().info(
-            "  Speech metadata: /tts/speech"
+            '  Speech metadata: /tts/speech'
         )
 
         self.get_logger().info(
-            "  Robot speaking:  /robot_speaking"
+            '  Robot speaking:  /robot_speaking'
         )
 
         self.get_logger().info(
-            "=============================================="
+            '=============================================='
         )
 
     # ==============================================================
@@ -207,7 +209,7 @@ class TtsNode(Node):
     def _wait_for_worker(self):
 
         self.get_logger().info(
-            "Waiting for EmojiVoice models to load..."
+            'Waiting for EmojiVoice models to load...'
         )
 
         while True:
@@ -218,7 +220,7 @@ class TtsNode(Node):
 
                 if self.worker.poll() is not None:
                     raise RuntimeError(
-                        "EmojiVoice worker exited while loading models."
+                        'EmojiVoice worker exited while loading models.'
                     )
 
                 continue
@@ -226,15 +228,15 @@ class TtsNode(Node):
             line = line.rstrip()
 
             self.get_logger().info(
-                f"[EmojiVoice] {line}"
+                f'[EmojiVoice] {line}'
             )
 
-            if line == "EmojiVoice models loaded.":
+            if line == 'EmojiVoice models loaded.':
 
                 self.worker_ready = True
 
                 self.get_logger().info(
-                    "EmojiVoice worker is ready."
+                    'EmojiVoice worker is ready.'
                 )
 
                 return
@@ -251,22 +253,21 @@ class TtsNode(Node):
 
             <voice_expression(😍)>Hello!</voice_expression>
 
-        Returns:
+        Returns
+        -------
+        tuple
+            clean_text, emotion, where emotion is the EmojiVoice emotion ID.
 
-            clean_text, emotion
-
-        where emotion is the EmojiVoice emotion ID.
         """
-
         if not text:
-            return text, "neutral"
+            return text, 'neutral'
 
         pattern = re.compile(
-            r"^\s*"
-            r"<voice_expression\(\s*(.*?)\s*\)>"
-            r"(.*?)"
-            r"</voice_expression>"
-            r"\s*$",
+            r'^\s*'
+            r'<voice_expression\(\s*(.*?)\s*\)>'
+            r'(.*?)'
+            r'</voice_expression>'
+            r'\s*$',
             re.IGNORECASE | re.DOTALL,
         )
 
@@ -280,16 +281,16 @@ class TtsNode(Node):
             if expression not in EMOJI_MAPPING:
 
                 self.get_logger().warning(
-                    f"Unknown voice expression emoji: "
+                    f'Unknown voice expression emoji: '
                     f"'{expression}'. Using neutral."
                 )
 
-                return clean_text, "neutral"
+                return clean_text, 'neutral'
 
             emotion = str(EMOJI_MAPPING[expression])
 
             self.get_logger().info(
-                f"Voice expression detected: "
+                f'Voice expression detected: '
                 f"'{expression}' -> EmojiVoice emotion {emotion}"
             )
 
@@ -300,7 +301,7 @@ class TtsNode(Node):
             return clean_text, emotion
 
         # No voice expression tag -> neutral.
-        return text.strip(), "neutral"
+        return text.strip(), 'neutral'
 
     # ==============================================================
     # Send request to EmojiVoice
@@ -310,12 +311,12 @@ class TtsNode(Node):
 
         if not self.worker_ready:
             raise RuntimeError(
-                "EmojiVoice worker is not ready."
+                'EmojiVoice worker is not ready.'
             )
 
         request = {
-            "text": text,
-            "emotion": emotion,
+            'text': text,
+            'emotion': emotion,
         }
 
         with self.worker_lock:
@@ -325,7 +326,7 @@ class TtsNode(Node):
                     request,
                     ensure_ascii=False,
                 )
-                + "\n"
+                + '\n'
             )
 
             self.worker.stdin.flush()
@@ -334,21 +335,21 @@ class TtsNode(Node):
 
         if not line:
             raise RuntimeError(
-                "EmojiVoice worker stopped unexpectedly."
+                'EmojiVoice worker stopped unexpectedly.'
             )
 
         response = json.loads(line)
 
-        if not response.get("ok", False):
+        if not response.get('ok', False):
             raise RuntimeError(
                 response.get(
-                    "error",
-                    "Unknown EmojiVoice error",
+                    'error',
+                    'Unknown EmojiVoice error',
                 )
             )
 
         audio_bytes = base64.b64decode(
-            response["audio"]
+            response['audio']
         )
 
         audio_array = np.frombuffer(
@@ -357,11 +358,11 @@ class TtsNode(Node):
         ).copy()
 
         sample_rate = int(
-            response["sample_rate"]
+            response['sample_rate']
         )
 
         duration = float(
-            response["duration"]
+            response['duration']
         )
 
         return (
@@ -393,8 +394,8 @@ class TtsNode(Node):
         try:
 
             self.get_logger().info(
-                f"Playing audio: "
-                f"{len(audio_array)} samples @ {sample_rate} Hz"
+                f'Playing audio: '
+                f'{len(audio_array)} samples @ {sample_rate} Hz'
             )
 
             # ------------------------------------------------------
@@ -439,7 +440,7 @@ class TtsNode(Node):
                 ):
 
                     self.get_logger().warning(
-                        "Say cancellation requested during playback."
+                        'Say cancellation requested during playback.'
                     )
 
                     sd.stop()
@@ -497,7 +498,7 @@ class TtsNode(Node):
                         )
 
                         self.get_logger().info(
-                            "[SAY FEEDBACK] "
+                            '[SAY FEEDBACK] '
                             f"word='{words[word_index]}'"
                         )
 
@@ -516,7 +517,7 @@ class TtsNode(Node):
         except Exception as exc:
 
             self.get_logger().error(
-                f"Audio playback failed: {exc}"
+                f'Audio playback failed: {exc}'
             )
 
             return False
@@ -539,8 +540,8 @@ class TtsNode(Node):
     ):
 
         payload = {
-            "text": text,
-            "duration": float(duration),
+            'text': text,
+            'duration': float(duration),
         }
 
         msg = String()
@@ -553,9 +554,9 @@ class TtsNode(Node):
         self.speech_publisher.publish(msg)
 
         self.get_logger().info(
-            "Published /tts/speech: "
+            'Published /tts/speech: '
             f"text='{text}', "
-            f"duration={duration:.3f}s"
+            f'duration={duration:.3f}s'
         )
 
     # ==============================================================
@@ -576,7 +577,7 @@ class TtsNode(Node):
         if not raw_input:
 
             self.get_logger().warning(
-                "Rejecting empty Say goal."
+                'Rejecting empty Say goal.'
             )
 
             return GoalResponse.REJECT
@@ -600,7 +601,7 @@ class TtsNode(Node):
     ):
 
         self.get_logger().info(
-            "Say cancellation requested."
+            'Say cancellation requested.'
         )
 
         return CancelResponse.ACCEPT
@@ -631,8 +632,8 @@ class TtsNode(Node):
         if not text:
 
             result.result.error_msg = (
-                "Say input is empty after removing "
-                "voice expression tag."
+                'Say input is empty after removing '
+                'voice expression tag.'
             )
 
             goal_handle.abort()
@@ -660,7 +661,7 @@ class TtsNode(Node):
             if goal_handle.is_cancel_requested:
 
                 result.result.error_msg = (
-                    "Say action cancelled."
+                    'Say action cancelled.'
                 )
 
                 goal_handle.canceled()
@@ -685,11 +686,11 @@ class TtsNode(Node):
             except Exception as exc:
 
                 self.get_logger().error(
-                    f"EmojiVoice generation failed: {exc}"
+                    f'EmojiVoice generation failed: {exc}'
                 )
 
                 result.result.error_msg = (
-                    f"TTS generation failed: {exc}"
+                    f'TTS generation failed: {exc}'
                 )
 
                 goal_handle.abort()
@@ -703,7 +704,7 @@ class TtsNode(Node):
             if goal_handle.is_cancel_requested:
 
                 result.result.error_msg = (
-                    "Say action cancelled."
+                    'Say action cancelled.'
                 )
 
                 goal_handle.canceled()
@@ -728,7 +729,7 @@ class TtsNode(Node):
             self.robot_speaks = True
 
             self.get_logger().info(
-                "Starting audio playback..."
+                'Starting audio playback...'
             )
 
             # Only in the case of the robot!!
@@ -759,7 +760,7 @@ class TtsNode(Node):
             ):
 
                 result.result.error_msg = (
-                    "Say action cancelled during playback."
+                    'Say action cancelled during playback.'
                 )
 
                 if goal_handle.is_cancel_requested:
@@ -773,19 +774,19 @@ class TtsNode(Node):
                 return result
 
             self.get_logger().info(
-                "Audio playback finished."
+                'Audio playback finished.'
             )
 
         # ----------------------------------------------------------
         # Finished
         # ----------------------------------------------------------
 
-        result.result.error_msg = ""
+        result.result.error_msg = ''
 
         goal_handle.succeed()
 
         self.get_logger().info(
-            "Say action completed successfully."
+            'Say action completed successfully.'
         )
 
         return result
@@ -808,10 +809,10 @@ class TtsNode(Node):
     def destroy_node(self):
 
         self.get_logger().info(
-            "Stopping EmojiVoice worker..."
+            'Stopping EmojiVoice worker...'
         )
 
-        if hasattr(self, "worker"):
+        if hasattr(self, 'worker'):
 
             try:
 
@@ -869,5 +870,5 @@ def main():
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

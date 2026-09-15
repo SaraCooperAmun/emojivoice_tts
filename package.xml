@@ -19,7 +19,7 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>communication_skills</depend>
-
+  <test_depend>python3-pytest</test_depend>
   <export>
     <build_type>ament_python</build_type>
   </export>
