@@ -20,8 +20,9 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
 import sounddevice as sd
-
 from std_msgs.msg import Bool, String
+
+from hri_msgs.msg import Phoneme, Viseme
 
 WORKER_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -47,6 +48,147 @@ EMOJI_MAPPING = {
     '🤔': 17,
 }
 
+# ==============================================================
+# Matcha IPA -> hri_msgs/Phoneme
+# ==============================================================
+
+IPA_TO_PHONEME = {
+    'p': Phoneme.P,
+    'b': Phoneme.B,
+    'm': Phoneme.M,
+
+    'f': Phoneme.F,
+    'v': Phoneme.V,
+
+    'θ': Phoneme.TH,
+    'ð': Phoneme.DH,
+
+    't': Phoneme.T,
+    'd': Phoneme.D,
+
+    'k': Phoneme.K,
+    'g': Phoneme.G,
+    'ŋ': Phoneme.NG,
+
+    'ʃ': Phoneme.SH,
+    'ʒ': Phoneme.ZH,
+    'ʧ': Phoneme.CH,
+    'tʃ': Phoneme.CH,
+    'dʒ': Phoneme.JH,
+
+    's': Phoneme.S,
+    'z': Phoneme.Z,
+
+    'l': Phoneme.L,
+    'r': Phoneme.R,
+    'ɹ': Phoneme.R,
+
+    'j': Phoneme.Y,
+    'w': Phoneme.W,
+    'h': Phoneme.H,
+
+    'ɑ': Phoneme.AA,
+    'ɒ': Phoneme.AA,
+    'a': Phoneme.AA,
+
+    'æ': Phoneme.AE,
+
+    'ʌ': Phoneme.AH,
+    'ɐ': Phoneme.AH,
+
+    'ɔ': Phoneme.AO,
+
+    'aʊ': Phoneme.AW,
+
+    'aɪ': Phoneme.AY,
+
+    'ɛ': Phoneme.EH,
+
+    'ɜ': Phoneme.ER,
+    'ɝ': Phoneme.ER,
+
+    'e': Phoneme.EY,
+    'eɪ': Phoneme.EY,
+
+    'ɪ': Phoneme.IH,
+
+    'i': Phoneme.IY,
+    'iː': Phoneme.IY,
+
+    'o': Phoneme.OW,
+    'oʊ': Phoneme.OW,
+
+    'ɔɪ': Phoneme.OY,
+
+    'ʊ': Phoneme.UH,
+
+    'u': Phoneme.UW,
+    'uː': Phoneme.UW,
+
+    'ə': Phoneme.SCHWA,
+}
+
+# ==============================================================
+# Phoneme -> 15 standard face visemes
+# ==============================================================
+
+PHONEME_TO_VISEME = {
+    Phoneme.SIL: Viseme.SIL,
+
+    Phoneme.P: Viseme.PP,
+    Phoneme.B: Viseme.PP,
+    Phoneme.M: Viseme.PP,
+
+    Phoneme.F: Viseme.FF,
+    Phoneme.V: Viseme.FF,
+
+    Phoneme.TH: Viseme.TH,
+    Phoneme.DH: Viseme.TH,
+
+    Phoneme.T: Viseme.DD,
+    Phoneme.D: Viseme.DD,
+
+    Phoneme.K: Viseme.KK,
+    Phoneme.G: Viseme.KK,
+    Phoneme.NG: Viseme.KK,
+
+    Phoneme.SH: Viseme.CH,
+    Phoneme.ZH: Viseme.CH,
+    Phoneme.CH: Viseme.CH,
+    Phoneme.JH: Viseme.CH,
+
+    Phoneme.S: Viseme.SS,
+    Phoneme.Z: Viseme.SS,
+
+    Phoneme.L: Viseme.NN,
+    Phoneme.R: Viseme.RR,
+
+    Phoneme.Y: Viseme.IH,
+    Phoneme.W: Viseme.OU,
+    Phoneme.H: Viseme.IH,
+
+    Phoneme.AA: Viseme.AA,
+    Phoneme.AE: Viseme.AA,
+    Phoneme.AH: Viseme.IH,
+    Phoneme.AO: Viseme.OH,
+    Phoneme.AW: Viseme.OU,
+    Phoneme.AY: Viseme.AA,
+
+    Phoneme.EH: Viseme.E,
+    Phoneme.ER: Viseme.RR,
+    Phoneme.EY: Viseme.E,
+
+    Phoneme.IH: Viseme.IH,
+    Phoneme.IY: Viseme.IH,
+
+    Phoneme.OW: Viseme.OH,
+    Phoneme.OY: Viseme.OH,
+
+    Phoneme.UH: Viseme.OU,
+    Phoneme.UW: Viseme.OU,
+
+    Phoneme.SCHWA: Viseme.IH,
+}
 
 class TtsNode(Node):
 
@@ -127,7 +269,17 @@ class TtsNode(Node):
             '/tts/speech',
             10,
         )
+        self.phoneme_publisher = self.create_publisher(
+            Phoneme,
+            '/tts/phoneme',
+            10,
+        )
 
+        self.viseme_publisher = self.create_publisher(
+            Viseme,
+            '/tts/viseme',
+            10,
+        )
         # ----------------------------------------------------------
         # Only one synthesis/playback operation at a time.
         # ----------------------------------------------------------
@@ -365,12 +517,22 @@ class TtsNode(Node):
             response['duration']
         )
 
+        phonemes = response.get('phonemes', [])
+
         return (
             audio_array,
             sample_rate,
             duration,
+            phonemes,
         )
 
+    def publish_viseme(self, value, time_sec, duration):
+        msg = Viseme()
+        msg.value = value
+        msg.time = float(time_sec)
+        msg.duration = float(duration)
+        self.viseme_publisher.publish(msg)
+        
     # ==============================================================
     # Playback
     #
@@ -386,28 +548,28 @@ class TtsNode(Node):
         sample_rate,
         goal_handle=None,
         words=None,
+        phonemes=None,
     ):
-
         if audio_array is None:
             return False
 
         try:
-
             self.get_logger().info(
                 f'Playing audio: '
                 f'{len(audio_array)} samples @ {sample_rate} Hz'
             )
 
             # ------------------------------------------------------
-            # Start playback using sounddevice.
+            # Start playback
             # ------------------------------------------------------
-
-            playback_start = time.monotonic()
 
             sd.play(
                 audio_array,
                 sample_rate,
             )
+
+            # Start the timing clock immediately after playback starts.
+            playback_start = time.monotonic()
 
             # ------------------------------------------------------
             # Playback information
@@ -423,6 +585,7 @@ class TtsNode(Node):
                 total_duration = 0.0
 
             last_word_index = -1
+            last_phoneme_index = -1
 
             # ------------------------------------------------------
             # Wait while keeping ROS action cancellation responsive.
@@ -438,7 +601,6 @@ class TtsNode(Node):
                     goal_handle is not None
                     and goal_handle.is_cancel_requested
                 ):
-
                     self.get_logger().warning(
                         'Say cancellation requested during playback.'
                     )
@@ -456,6 +618,37 @@ class TtsNode(Node):
                     break
 
                 # --------------------------------------------------
+                # Current playback time
+                # --------------------------------------------------
+
+                elapsed = time.monotonic() - playback_start
+
+                # --------------------------------------------------
+                # Phoneme / viseme feedback
+                # --------------------------------------------------
+
+                if phonemes:
+                    while (
+                        last_phoneme_index + 1 < len(phonemes)
+                        and float(
+                            phonemes[
+                                last_phoneme_index + 1
+                            ]['time']
+                        ) <= elapsed
+                    ):
+                        last_phoneme_index += 1
+
+                        phoneme = phonemes[
+                            last_phoneme_index
+                        ]
+
+                        self.publish_phoneme(
+                            phoneme['value'],
+                            phoneme['time'],
+                            phoneme['duration'],
+                        )
+
+                # --------------------------------------------------
                 # Word-level feedback
                 #
                 # The generated audio does not provide exact word
@@ -464,11 +657,6 @@ class TtsNode(Node):
                 # --------------------------------------------------
 
                 if words and total_duration > 0:
-
-                    elapsed = (
-                        time.monotonic()
-                        - playback_start
-                    )
 
                     progress = min(
                         max(
@@ -504,18 +692,27 @@ class TtsNode(Node):
 
                         last_word_index = word_index
 
-                time.sleep(0.05)
+                # --------------------------------------------------
+                # Poll frequently enough for reasonably accurate
+                # phoneme timing.
+                # --------------------------------------------------
+
+                time.sleep(0.01)
 
             # ------------------------------------------------------
             # Ensure playback has completely finished.
             # ------------------------------------------------------
 
             sd.wait()
-
+            #send a silent SIL
+            self.publish_viseme(
+                Viseme.SIL,
+                time.monotonic() - playback_start,
+                0.0,
+            )
             return True
 
         except Exception as exc:
-
             self.get_logger().error(
                 f'Audio playback failed: {exc}'
             )
@@ -523,15 +720,49 @@ class TtsNode(Node):
             return False
 
         finally:
-
             try:
                 sd.stop()
             except Exception:
                 pass
-
     # ==============================================================
     # /tts/speech
     # ==============================================================
+
+    def publish_phoneme(self, value, time_sec, duration):
+        phoneme_value = IPA_TO_PHONEME.get(value)
+
+        if phoneme_value is None:
+            self.get_logger().debug(
+                f'Ignoring non-phoneme Matcha token: {value!r}'
+            )
+            return
+
+        msg = Phoneme()
+        msg.value = phoneme_value
+        msg.time = float(time_sec)
+        msg.duration = float(duration)
+
+        self.phoneme_publisher.publish(msg)
+
+        viseme_value = PHONEME_TO_VISEME.get(
+            phoneme_value,
+            Viseme.SIL,
+        )
+
+        viseme = Viseme()
+        viseme.value = viseme_value
+        viseme.time = float(time_sec)
+        viseme.duration = float(duration)
+
+        self.viseme_publisher.publish(viseme)
+
+        self.get_logger().debug(
+            f'phoneme={value!r} -> '
+            f'{phoneme_value}, '
+            f'viseme={viseme_value}, '
+            f't={time_sec:.3f}, '
+            f'd={duration:.3f}'
+        )
 
     def publish_speech_metadata(
         self,
@@ -678,6 +909,7 @@ class TtsNode(Node):
                     audio_array,
                     sample_rate,
                     duration,
+                    phonemes,
                 ) = self.generate_speech(
                     text,
                     emotion,
@@ -746,6 +978,7 @@ class TtsNode(Node):
                 sample_rate,
                 goal_handle,
                 words,
+                phonemes,
             )
 
             self.robot_speaks = False
