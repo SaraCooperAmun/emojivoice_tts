@@ -2,7 +2,7 @@
 
 ROS 2 TTS backend using **EmojiVoice / Matcha-TTS + HiFiGAN** to provide emotion-aware text-to-speech through the `/tts/say` action.
 
-The package acts as a ROS 2 wrapper around EmojiVoice.
+The package acts as a ROS 2 wrapper around EmojiVoice and provides aligned phoneme and viseme information during speech playback.
 
 The overall architecture is:
 
@@ -24,11 +24,18 @@ EmojiVoice worker
       ├── HiFiGAN
       │
       ▼
-Audio + duration
+Audio + aligned phonemes
+      │
+      ├── Play audio using sounddevice
       │
       ├── Publish /tts/speech
       │
-      └── Play audio using sounddevice
+      ├── Publish /tts/phoneme
+      │
+      └── Publish /tts/viseme
+                         │
+                         ▼
+                    Vizij face
 ```
 
 The `/skill/say` action is provided by the **Dialogue Manager**. The Dialogue Manager processes the generic voice-expression syntax and sends the resulting text to the `/tts/say` TTS backend.
@@ -87,9 +94,11 @@ Your EmojiVoice installation should contain something similar to:
 
 ```text
 <EMOJIVOICE_DIR>/
+
 ├── Matcha-TTS/
 │   └── models/
 │       └── emoji-hri-paige-inference.ckpt
+│
 └── ...
 ```
 
@@ -117,6 +126,7 @@ Then copy `tts_synthesise.py` into the root of your EmojiVoice installation:
 
 ```text
 <EMOJIVOICE_DIR>/
+
 ├── tts_synthesise.py
 ├── Matcha-TTS/
 └── ...
@@ -179,22 +189,94 @@ The worker path itself does not need to be configured because `emojivoice_worker
 
 ---
 
-## 5. Build the ROS package
+## 5. ROS 4 HRI message dependencies
+
+The package uses the local ROS 4 HRI `hri_msgs` package for speech alignment messages.
+
+The repository is:
+
+```text
+https://gitlab.iiia.csic.es/socialminds/ros4hri/hri_msgs.git
+```
+
+The package provides the following messages used by EmojiVoice TTS:
+
+```text
+hri_msgs/msg/Phoneme
+hri_msgs/msg/Viseme
+```
+
+### Phoneme message
+
+`Phoneme.msg` contains:
+
+```text
+uint8 value
+float32 time
+float32 duration
+```
+
+The `value` identifies a normalized phoneme, while `time` and `duration` specify its aligned position in the generated utterance.
+
+### Viseme message
+
+`Viseme.msg` contains:
+
+```text
+uint8 value
+float32 time
+float32 duration
+```
+
+The `value` identifies the corresponding facial viseme, while `time` and `duration` specify its aligned position in the utterance.
+
+The current `Viseme` vocabulary is:
+
+```text
+SIL = 0
+PP  = 1
+FF  = 2
+TH  = 3
+DD  = 4
+KK  = 5
+CH  = 6
+SS  = 7
+NN  = 8
+RR  = 9
+AA  = 10
+E   = 11
+IH  = 12
+OH  = 13
+OU  = 14
+```
+
+The phoneme-to-viseme conversion is performed by `tts_node.py`.
+
+---
+
+## 6. Build the ROS package
 
 Whenever the package is changed:
 
 ```bash
 cd ~/vizij_project/ros_ws
+
 source /opt/ros/jazzy/setup.bash
 
-colcon build --packages-select emojivoice_tts --symlink-install
+colcon build --packages-select hri_msgs emojivoice_tts --symlink-install
 
 source install/setup.bash
 ```
 
+If only `emojivoice_tts` was changed and `hri_msgs` has already been built, it is sufficient to build:
+
+```bash
+colcon build --packages-select emojivoice_tts --symlink-install
+```
+
 ---
 
-## 6. Start EmojiVoice TTS
+## 7. Start EmojiVoice TTS
 
 The recommended way to start the node is using the ROS 2 launch file:
 
@@ -216,6 +298,8 @@ The node provides:
 ```text
 /tts/say
 /tts/speech
+/tts/phoneme
+/tts/viseme
 /robot_speaking
 ```
 
@@ -225,7 +309,7 @@ Keep this terminal running.
 
 ---
 
-## 7. `/tts/say` action
+## 8. `/tts/say` action
 
 The EmojiVoice ROS node provides:
 
@@ -267,14 +351,14 @@ Application
     │
     │ EmojiVoice
     ▼
-Audio
+Audio + speech alignment
 ```
 
 For more information about the `/skill/say` interface and voice-expression handling, see the [Dialogue Manager documentation](https://gitlab.iiia.csic.es/socialminds/ros4hri/dialogue_manager/-/tree/main/dialogue_manager).
 
 ---
 
-## 8. Test speech
+## 9. Test speech
 
 ### Neutral speech
 
@@ -302,7 +386,7 @@ The ROS node extracts the emoji and maps it to the corresponding EmojiVoice spea
 
 ---
 
-## 9. Dialogue Manager integration
+## 10. Dialogue Manager integration
 
 The Dialogue Manager uses the generic syntax:
 
@@ -330,7 +414,7 @@ For more details, see the [Dialogue Manager documentation](https://gitlab.iiia.c
 
 ---
 
-## 10. Emoji → voice mapping
+## 11. Emoji → voice mapping
 
 The current EmojiVoice mapping is:
 
@@ -380,7 +464,7 @@ before sending the request to the EmojiVoice worker.
 
 ---
 
-## 11. Action feedback
+## 12. Action feedback
 
 During playback, the `/tts/say` action provides word-level feedback through:
 
@@ -406,7 +490,7 @@ This allows clients such as the Dialogue Manager or other ROS components to rece
 
 ---
 
-## 12. Speech metadata
+## 13. Speech metadata
 
 The node publishes speech metadata on:
 
@@ -448,41 +532,282 @@ is published as:
 }
 ```
 
+`/tts/speech` provides speech metadata. It is **not** the timing source for Vizij facial animation.
+
 ---
 
-## 13. Vizij synchronization
+# 14. Phoneme alignment
 
-The generated speech duration from `/tts/speech` is used to synchronize speech with Vizij's visual/viseme behaviour.
+EmojiVoice / Matcha-TTS provides attention information that can be used to align generated audio with the phoneme sequence.
+
+The EmojiVoice worker converts this alignment into a sequence of timed phonemes.
+
+The ROS node publishes each aligned phoneme on:
+
+```text
+/tts/phoneme
+```
+
+Check it with:
+
+```bash
+ros2 topic echo /tts/phoneme
+```
+
+Each message contains:
+
+```text
+value
+time
+duration
+```
+
+For example:
+
+```text
+value: 23
+time: 0.0
+duration: 0.0232
+---
+value: 39
+time: 0.0464
+duration: 0.0348
+---
+value: 19
+time: 0.1045
+duration: 0.0348
+```
+
+The timestamps are measured from the beginning of audio playback.
+
+Non-phonetic Matcha tokens such as stress markers, length markers, spaces, punctuation and other alignment symbols are ignored by the ROS node.
+
+---
+
+# 15. Viseme alignment
+
+The aligned phonemes are converted into facial visemes using the mapping implemented in `tts_node.py`.
+
+The resulting visemes are published on:
+
+```text
+/tts/viseme
+```
+
+Check them with:
+
+```bash
+ros2 topic echo /tts/viseme
+```
+
+Each message contains:
+
+```text
+value
+time
+duration
+```
+
+For example:
+
+```text
+value: 12
+time: 0.0
+duration: 0.0232
+---
+value: 12
+time: 0.0464
+duration: 0.0348
+---
+value: 8
+time: 0.1045
+duration: 0.0348
+---
+value: 13
+time: 0.2322
+duration: 0.0348
+```
+
+The phoneme and viseme messages use the same timing information.
+
+For example:
+
+```text
+Phoneme:
+    value: 35
+    time: 0.2322
+    duration: 0.0348
+
+Viseme:
+    value: 13
+    time: 0.2322
+    duration: 0.0348
+```
+
+This allows clients such as Vizij to use the viseme stream directly without having to perform phoneme-to-viseme conversion themselves.
+
+---
+
+# 16. Real-time playback synchronization
+
+The phoneme and viseme streams are generated and published **during audio playback**.
 
 The sequence is:
 
 ```text
 Receive /tts/say
-        ↓
+        │
+        ▼
 Parse text + voice expression
-        ↓
+        │
+        ▼
 Generate audio with EmojiVoice
-        ↓
-Publish /tts/speech
-        ↓
-Start audio playback
+        │
+        ├───────────────┐
+        ▼               │
+Start audio playback   │
+        │               │
+        ▼               │
+Measure playback time   │
+        │               │
+        ├── /tts/phoneme
+        │
+        └── /tts/viseme
+                │
+                ▼
+              Vizij
+                │
+                ▼
+           Face animation
 ```
 
-The `/tts/speech` message is therefore published before playback starts.
+The ROS node records the playback start time immediately after starting the audio:
 
-This allows the Vizij side to receive the text and duration before the corresponding audio begins.
+```python
+playback_start = time.monotonic()
+```
 
-Note: THIS WILL BE FIXED BASED ON VISEME BASED ARCHITECTURE.
+During playback, the elapsed time is compared with the alignment timestamp of the next phoneme.
 
-### Playback delay
+A phoneme is published when its aligned timestamp is reached:
 
-The current implementation contains a 2.0 second delay immediately before playback.
+```python
+elapsed = time.monotonic() - playback_start
+```
 
-This is currently used for the robot setup and may need to be removed or adjusted depending on the target system.
+The corresponding viseme is published at the same time.
+
+Therefore, Vizij does not need to reconstruct the speech timing from `/tts/speech`.
+
+Instead, Vizij can subscribe directly to:
+
+```text
+/tts/viseme
+```
+
+and update the face as the viseme messages arrive.
 
 ---
 
-## 14. Important files
+# 17. Vizij integration
+
+Vizij uses the `/tts/viseme` topic as the real-time facial animation stream.
+
+The intended architecture is:
+
+```text
+                 ROS 2
+                   │
+                   │ /tts/say
+                   ▼
+           ┌─────────────────┐
+           │  emojivoice_tts │
+           └─────────────────┘
+                   │
+          ┌────────┴────────┐
+          │                 │
+          ▼                 ▼
+       Speaker         /tts/viseme
+                            │
+                            ▼
+                       Vizij Rust
+                            │
+                            ▼
+                       Face shapes
+```
+
+The TTS node remains responsible for:
+
+* text processing
+* voice-expression parsing
+* EmojiVoice synthesis
+* audio playback
+* phoneme alignment
+* phoneme publication
+* viseme conversion
+* viseme publication
+
+Vizij is responsible for:
+
+* receiving the ROS 2 viseme messages
+* mapping ROS viseme values to the corresponding face shapes
+* applying the face animation
+
+Vizij should **not generate a second copy of the audio** from the TTS service.
+
+The EmojiVoice ROS node is the component responsible for audio playback.
+
+This avoids playing the same utterance twice and ensures that the face animation is synchronized with the audio playback controlled by the TTS node.
+
+---
+
+## 18. Final silence
+
+A final `SIL` viseme is used to return the face to its neutral/resting mouth shape when an utterance finishes.
+
+The sequence is therefore:
+
+```text
+speech
+  │
+  ├── viseme
+  ├── viseme
+  ├── viseme
+  ├── ...
+  └── SIL
+```
+
+This prevents the face from remaining on the last spoken mouth shape after the utterance has finished.
+
+The `SIL` value is:
+
+```text
+Viseme.SIL = 0
+```
+
+---
+
+## 19. Playback delay
+
+The current implementation contains a 2.0 second delay immediately before playback:
+
+```python
+time.sleep(2.0)
+```
+
+This is currently used for the robot setup.
+
+The delay occurs before `play_audio()` starts the audio and before the playback clock is initialized.
+
+Therefore, the 2.0 second delay is **not included in the viseme timestamps**.
+
+The current playback timing starts when the audio is actually started.
+
+This delay may be removed or adjusted depending on the target robot/system.
+
+---
+
+# 20. Important files
 
 The package is located at:
 
@@ -494,14 +819,17 @@ Main files:
 
 ```text
 emojivoice_tts/
+
 ├── __init__.py
 ├── tts_node.py
 └── emojivoice_worker.py
 
 config/
+
 └── emojivoice.yaml
 
 launch/
+
 └── emojivoice_tts.launch.py
 ```
 
@@ -518,8 +846,11 @@ Responsible for:
 * cancellation
 * audio playback
 * `/tts/speech`
+* `/tts/phoneme`
+* `/tts/viseme`
 * `/robot_speaking`
 * communicating with the EmojiVoice worker
+* phoneme → viseme conversion
 
 ### `emojivoice_worker.py`
 
@@ -531,7 +862,9 @@ Responsible for:
 * HiFiGAN
 * speaker ID selection
 * audio generation
-* returning generated audio and duration
+* phoneme alignment
+* returning generated audio
+* returning aligned phonemes
 
 ### `config/emojivoice.yaml`
 
@@ -546,7 +879,7 @@ Starts `tts_node` and loads the EmojiVoice configuration.
 
 ---
 
-## 15. Python environments
+# 21. Python environments
 
 ROS 2 Jazzy uses Python 3.12, while EmojiVoice runs in its own Python 3.11 environment.
 
@@ -575,7 +908,70 @@ emojivoice_python: "/path/to/emojivoice/bin/python"
 
 ---
 
-## 16. Troubleshooting
+# 22. Testing the viseme stream
+
+After building the package and starting the TTS node, first check that the topics exist:
+
+```bash
+source ~/vizij_project/ros_ws/install/setup.bash
+
+ros2 topic list | grep /tts
+```
+
+Expected topics include:
+
+```text
+/tts/say
+/tts/speech
+/tts/phoneme
+/tts/viseme
+```
+
+### Test phonemes
+
+In one terminal:
+
+```bash
+source ~/vizij_project/ros_ws/install/setup.bash
+
+RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/phoneme
+```
+
+Then send speech from another terminal.
+
+### Test visemes
+
+In another terminal:
+
+```bash
+source ~/vizij_project/ros_ws/install/setup.bash
+
+RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/viseme
+```
+
+Then send:
+
+```bash
+ros2 action send_goal /tts/say communication_skills/action/Say \
+'{meta: {priority: 128}, input: "Hello, I am a talking face."}'
+```
+
+The `/tts/viseme` messages should appear progressively during playback.
+
+The timestamps should increase from approximately:
+
+```text
+0.0
+0.04
+0.10
+...
+```
+
+rather than all messages being generated only after playback has finished.
+
+---
+
+# 23. Troubleshooting
 
 ### Check the `/tts/say` action
 
@@ -603,6 +999,30 @@ The node should appear as:
 ros2 topic echo /tts/speech
 ```
 
+### Check phoneme alignment
+
+```bash
+ros2 topic echo /tts/phoneme
+```
+
+### Check viseme alignment
+
+```bash
+ros2 topic echo /tts/viseme
+```
+
+### Check the message interfaces
+
+```bash
+ros2 interface show hri_msgs/msg/Phoneme
+```
+
+and:
+
+```bash
+ros2 interface show hri_msgs/msg/Viseme
+```
+
 ### Test an expression directly
 
 ```bash
@@ -621,7 +1041,9 @@ Speech emotion: '107'
 
 and word-level feedback during playback.
 
-## Testing
+---
+
+# 24. Testing
 
 Run the package tests from the ROS 2 workspace:
 
@@ -629,6 +1051,7 @@ Run the package tests from the ROS 2 workspace:
 cd ~/vizij_project/ros_ws
 
 colcon test --packages-select emojivoice_tts
+
 colcon test-result --verbose
 ```
 
@@ -642,9 +1065,11 @@ To run the tests after rebuilding the package:
 
 ```bash
 colcon build --packages-select emojivoice_tts
+
 source install/setup.bash
 
 colcon test --packages-select emojivoice_tts
+
 colcon test-result --verbose
 ```
 
