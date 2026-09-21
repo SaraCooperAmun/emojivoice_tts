@@ -369,10 +369,10 @@ ros2 action send_goal /tts/say communication_skills/action/Say \
 
 ### Speech with a voice expression
 
-EmojiVoice receives the generic format:
+EmojiVoice accepts both emoji and semantic string expressions using the generic format:
 
 ```text
-<voice_expression(😍)>Hello, I am happy to see you!</voice_expression>
+<voice_expression(EXPRESSION)>text</voice_expression>
 ```
 
 For example:
@@ -382,7 +382,14 @@ ros2 action send_goal /tts/say communication_skills/action/Say \
 '{meta: {priority: 128}, input: "<voice_expression(😍)>Hello, I am happy to see you!</voice_expression>"}'
 ```
 
-The ROS node extracts the emoji and maps it to the corresponding EmojiVoice speaker ID before generating the speech.
+Or using a semantic expression name:
+
+```bash
+ros2 action send_goal /tts/say communication_skills/action/Say \
+'{meta: {priority: 128}, input: "<voice_expression(happy)>Hello, I am happy to see you!</voice_expression>"}'
+```
+
+The ROS node extracts the expression and maps it to the corresponding EmojiVoice speaker ID before generating the speech.
 
 ---
 
@@ -430,6 +437,20 @@ The current EmojiVoice mapping is:
 😮  → speaker 54
 😅  → speaker 22
 🤔  → speaker 17
+```
+
+Semantic names:
+
+```text
+happy       → speaker 18
+sad         → speaker 103
+angry       → speaker 58
+cool        → speaker 79
+annoyed     → speaker 66
+joyful      → speaker 18
+surprised   → speaker 54
+embarrassed → speaker 22
+thinking    → speaker 17
 ```
 
 Neutral speech does not use a voice-expression tag.

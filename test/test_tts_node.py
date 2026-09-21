@@ -2,7 +2,10 @@ import unittest
 
 from unittest import mock
 
-from emojivoice_tts.tts_node import EMOJI_MAPPING, TtsNode
+from emojivoice_tts.tts_node import (
+    TtsNode,
+    VOICE_EXPRESSION_MAPPING,
+)
 
 
 class TestParseEmotionTag(unittest.TestCase):
@@ -11,10 +14,10 @@ class TestParseEmotionTag(unittest.TestCase):
         self.node = TtsNode.__new__(TtsNode)
         self.node._logger = mock.MagicMock()
 
-    def test_all_emoji_mappings(self):
-        for emoji, expected_id in EMOJI_MAPPING.items():
+    def test_all_voice_expression_mappings(self):
+        for expression, expected_id in VOICE_EXPRESSION_MAPPING.items():
             text = (
-                f'<voice_expression({emoji})>'
+                f'<voice_expression({expression})>'
                 'Hello!'
                 '</voice_expression>'
             )
@@ -40,6 +43,34 @@ class TestParseEmotionTag(unittest.TestCase):
         self.assertEqual(clean_text, 'Hello!')
         self.assertEqual(emotion, '107')
 
+    def test_happy_string_maps_to_18(self):
+        text = (
+            '<voice_expression(happy)>'
+            'Hello!'
+            '</voice_expression>'
+        )
+
+        clean_text, emotion = (
+            self.node.parse_emotion_tag(text)
+        )
+
+        self.assertEqual(clean_text, 'Hello!')
+        self.assertEqual(emotion, '18')
+
+    def test_sad_string_maps_to_103(self):
+        text = (
+            '<voice_expression(sad)>'
+            'Hello!'
+            '</voice_expression>'
+        )
+
+        clean_text, emotion = (
+            self.node.parse_emotion_tag(text)
+        )
+
+        self.assertEqual(clean_text, 'Hello!')
+        self.assertEqual(emotion, '103')
+
     def test_no_expression_uses_neutral(self):
         clean_text, emotion = (
             self.node.parse_emotion_tag('Hello world!')
@@ -58,7 +89,7 @@ class TestParseEmotionTag(unittest.TestCase):
 
     def test_unknown_expression_uses_neutral(self):
         text = (
-            '<voice_expression(happy)>'
+            '<voice_expression(not_an_emotion)>'
             'Hello!'
             '</voice_expression>'
         )

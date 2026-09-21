@@ -9,6 +9,7 @@ import threading
 import time
 
 from communication_skills.action import Say
+from hri_msgs.msg import Phoneme, Viseme
 
 import numpy as np
 
@@ -22,8 +23,6 @@ from rclpy.node import Node
 import sounddevice as sd
 from std_msgs.msg import Bool, String
 
-from hri_msgs.msg import Phoneme, Viseme
-
 WORKER_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     'emojivoice_worker.py',
@@ -34,7 +33,8 @@ WORKER_PATH = os.path.join(
 # EmojiVoice emotion mapping
 # ==============================================================
 
-EMOJI_MAPPING = {
+VOICE_EXPRESSION_MAPPING = {
+    # Emojis
     '😍': 107,
     '😡': 58,
     '😎': 79,
@@ -46,6 +46,17 @@ EMOJI_MAPPING = {
     '😮': 54,
     '😅': 22,
     '🤔': 17,
+
+    # Semantic names
+    'happy': 18,
+    'sad': 103,
+    'angry': 58,
+    'cool': 79,
+    'annoyed': 66,
+    'joyful': 18,
+    'surprised': 54,
+    'embarrassed': 22,
+    'thinking': 17,
 }
 
 # ==============================================================
@@ -189,6 +200,7 @@ PHONEME_TO_VISEME = {
 
     Phoneme.SCHWA: Viseme.IH,
 }
+
 
 class TtsNode(Node):
 
@@ -430,7 +442,7 @@ class TtsNode(Node):
             expression = match.group(1).strip()
             clean_text = match.group(2).strip()
 
-            if expression not in EMOJI_MAPPING:
+            if expression not in VOICE_EXPRESSION_MAPPING:
 
                 self.get_logger().warning(
                     f'Unknown voice expression emoji: '
@@ -439,7 +451,7 @@ class TtsNode(Node):
 
                 return clean_text, 'neutral'
 
-            emotion = str(EMOJI_MAPPING[expression])
+            emotion = str(VOICE_EXPRESSION_MAPPING[expression])
 
             self.get_logger().info(
                 f'Voice expression detected: '
@@ -532,7 +544,7 @@ class TtsNode(Node):
         msg.time = float(time_sec)
         msg.duration = float(duration)
         self.viseme_publisher.publish(msg)
-        
+
     # ==============================================================
     # Playback
     #
@@ -704,7 +716,7 @@ class TtsNode(Node):
             # ------------------------------------------------------
 
             sd.wait()
-            #send a silent SIL
+            # send a silent SIL
             self.publish_viseme(
                 Viseme.SIL,
                 time.monotonic() - playback_start,
@@ -756,14 +768,6 @@ class TtsNode(Node):
 
         self.viseme_publisher.publish(viseme)
 
-        self.get_logger().debug(
-            f'phoneme={value!r} -> '
-            f'{phoneme_value}, '
-            f'viseme={viseme_value}, '
-            f't={time_sec:.3f}, '
-            f'd={duration:.3f}'
-        )
-
     def publish_speech_metadata(
         self,
         text,
@@ -783,12 +787,6 @@ class TtsNode(Node):
         )
 
         self.speech_publisher.publish(msg)
-
-        self.get_logger().info(
-            'Published /tts/speech: '
-            f"text='{text}', "
-            f'duration={duration:.3f}s'
-        )
 
     # ==============================================================
     # Action callbacks

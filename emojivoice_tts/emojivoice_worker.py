@@ -159,7 +159,6 @@ def process_text(text):
         [cleaners[LANGUAGE]],
     )[0]
 
-
     # Matcha receives:
     #
     #   symbol, 0, symbol, 0, symbol, 0, ...
@@ -230,7 +229,6 @@ def synthesize(
         a,
         axis=0,
     )
-
 
     # ---------------------------------------------------------
     # Audio generation
