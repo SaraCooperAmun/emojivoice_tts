@@ -9,7 +9,7 @@ import threading
 import time
 
 from communication_skills.action import Say
-from hri_msgs.msg import Phoneme, Viseme
+from hri_msgs.msg import Phoneme, Viseme, Visemes
 
 import numpy as np
 
@@ -288,8 +288,8 @@ class TtsNode(Node):
         )
 
         self.viseme_publisher = self.create_publisher(
-            Viseme,
-            '/tts/viseme',
+            Visemes,
+            '/tts/visemes',
             10,
         )
         # ----------------------------------------------------------
@@ -538,13 +538,15 @@ class TtsNode(Node):
             phonemes,
         )
 
-    def publish_viseme(self, value, time_sec, duration):
-        msg = Viseme()
-        msg.value = value
-        msg.time = float(time_sec)
-        msg.duration = float(duration)
-        self.viseme_publisher.publish(msg)
+    def publish_viseme(self, value):
+        msg = Visemes()
 
+        viseme = Viseme()
+        viseme.value = value
+
+        msg.visemes.append(viseme)
+
+        self.viseme_publisher.publish(msg)
     # ==============================================================
     # Playback
     #
@@ -717,11 +719,7 @@ class TtsNode(Node):
 
             sd.wait()
             # send a silent SIL
-            self.publish_viseme(
-                Viseme.SIL,
-                time.monotonic() - playback_start,
-                0.0,
-            )
+            self.publish_viseme(Viseme.SIL)
             return True
 
         except Exception as exc:
@@ -761,12 +759,7 @@ class TtsNode(Node):
             Viseme.SIL,
         )
 
-        viseme = Viseme()
-        viseme.value = viseme_value
-        viseme.time = float(time_sec)
-        viseme.duration = float(duration)
-
-        self.viseme_publisher.publish(viseme)
+        self.publish_viseme(viseme_value)
 
     def publish_speech_metadata(
         self,

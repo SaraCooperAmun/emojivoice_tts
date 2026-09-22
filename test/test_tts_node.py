@@ -71,6 +71,41 @@ class TestParseEmotionTag(unittest.TestCase):
         self.assertEqual(clean_text, 'Hello!')
         self.assertEqual(emotion, '103')
 
+    def test_publish_viseme_publishes_single_viseme(self):
+        self.node.viseme_publisher = mock.MagicMock()
+
+        self.node.publish_viseme(12)
+
+        self.node.viseme_publisher.publish.assert_called_once()
+
+        msg = self.node.viseme_publisher.publish.call_args[0][0]
+
+        self.assertEqual(len(msg.visemes), 1)
+        self.assertEqual(msg.visemes[0].value, 12)
+        self.assertEqual(msg.visemes[0].time, 0.0)
+        self.assertEqual(msg.visemes[0].duration, 0.0)
+
+    def test_publish_viseme_publishes_each_viseme_individually(self):
+        self.node.viseme_publisher = mock.MagicMock()
+
+        for value in [12, 8, 13, 14, 0]:
+            self.node.publish_viseme(value)
+
+        self.assertEqual(
+            self.node.viseme_publisher.publish.call_count,
+            5,
+        )
+
+        published_values = [
+            call.args[0].visemes[0].value
+            for call in self.node.viseme_publisher.publish.call_args_list
+        ]
+
+        self.assertEqual(
+            published_values,
+            [12, 8, 13, 14, 0],
+        )
+
     def test_no_expression_uses_neutral(self):
         clean_text, emotion = (
             self.node.parse_emotion_tag('Hello world!')

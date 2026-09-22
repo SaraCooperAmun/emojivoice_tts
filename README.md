@@ -203,6 +203,7 @@ The package provides the following messages used by EmojiVoice TTS:
 
 ```text
 hri_msgs/msg/Phoneme
+hri_msgs/msg/Visemes
 hri_msgs/msg/Viseme
 ```
 
@@ -218,7 +219,13 @@ float32 duration
 
 The `value` identifies a normalized phoneme, while `time` and `duration` specify its aligned position in the generated utterance.
 
-### Viseme message
+### Visemes messages
+
+`Viseme.msg` contains:
+
+```text
+Viseme[] visemes
+```
 
 `Viseme.msg` contains:
 
@@ -251,6 +258,11 @@ OU  = 14
 ```
 
 The phoneme-to-viseme conversion is performed by `tts_node.py`.
+
+The idea is that the TTS cana choose between two options:
+
+1) Publish visemes as thhey need to be played, in which case it should publish one viseme only at the required time (leaving time and duration fields empty)
+2) Compute expected time and duration for all visemes of the sentence and feed all of it in an array
 
 ---
 
@@ -299,7 +311,7 @@ The node provides:
 /tts/say
 /tts/speech
 /tts/phoneme
-/tts/viseme
+/tts/visemes
 /robot_speaking
 ```
 
@@ -612,16 +624,16 @@ The aligned phonemes are converted into facial visemes using the mapping impleme
 The resulting visemes are published on:
 
 ```text
-/tts/viseme
+/tts/visemes
 ```
 
 Check them with:
 
 ```bash
-ros2 topic echo /tts/viseme
+ros2 topic echo /tts/visemes
 ```
 
-Each message contains:
+Each message contains an array of `Viseme.msg`:
 
 ```text
 value
@@ -693,7 +705,7 @@ Measure playback time   │
         │               │
         ├── /tts/phoneme
         │
-        └── /tts/viseme
+        └── /tts/visemes
                 │
                 ▼
               Vizij
@@ -723,7 +735,7 @@ Therefore, Vizij does not need to reconstruct the speech timing from `/tts/speec
 Instead, Vizij can subscribe directly to:
 
 ```text
-/tts/viseme
+/tts/visemes
 ```
 
 and update the face as the viseme messages arrive.
@@ -732,7 +744,7 @@ and update the face as the viseme messages arrive.
 
 # 17. Vizij integration
 
-Vizij uses the `/tts/viseme` topic as the real-time facial animation stream.
+Vizij uses the `/tts/visemes` topic as the real-time facial animation stream.
 
 The intended architecture is:
 
@@ -748,7 +760,7 @@ The intended architecture is:
           ┌────────┴────────┐
           │                 │
           ▼                 ▼
-       Speaker         /tts/viseme
+       Speaker         /tts/visemes
                             │
                             ▼
                        Vizij Rust
@@ -868,7 +880,7 @@ Responsible for:
 * audio playback
 * `/tts/speech`
 * `/tts/phoneme`
-* `/tts/viseme`
+* `/tts/visemes`
 * `/robot_speaking`
 * communicating with the EmojiVoice worker
 * phoneme → viseme conversion
@@ -945,7 +957,7 @@ Expected topics include:
 /tts/say
 /tts/speech
 /tts/phoneme
-/tts/viseme
+/tts/visemes
 ```
 
 ### Test phonemes
@@ -967,7 +979,7 @@ In another terminal:
 ```bash
 source ~/vizij_project/ros_ws/install/setup.bash
 
-RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/viseme
+RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/visemes
 ```
 
 Then send:
@@ -977,7 +989,7 @@ ros2 action send_goal /tts/say communication_skills/action/Say \
 '{meta: {priority: 128}, input: "Hello, I am a talking face."}'
 ```
 
-The `/tts/viseme` messages should appear progressively during playback.
+The `/tts/visemes` messages should appear progressively during playback.
 
 The timestamps should increase from approximately:
 
@@ -1029,7 +1041,7 @@ ros2 topic echo /tts/phoneme
 ### Check viseme alignment
 
 ```bash
-ros2 topic echo /tts/viseme
+ros2 topic echo /tts/visemes
 ```
 
 ### Check the message interfaces
@@ -1041,7 +1053,7 @@ ros2 interface show hri_msgs/msg/Phoneme
 and:
 
 ```bash
-ros2 interface show hri_msgs/msg/Viseme
+ros2 interface show hri_msgs/msg/Visemes
 ```
 
 ### Test an expression directly
