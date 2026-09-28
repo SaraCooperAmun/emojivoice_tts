@@ -711,7 +711,7 @@ class TtsNode(Node):
                 # phoneme timing.
                 # --------------------------------------------------
 
-                time.sleep(0.01)
+                #time.sleep(0.01)
 
             # ------------------------------------------------------
             # Ensure playback has completely finished.
