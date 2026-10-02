@@ -415,7 +415,7 @@ class TtsNode(Node):
 
         Supported:
 
-            <voice_expression(😍)>Hello!</voice_expression>
+            <expression(😍)>Hello!</expression>
 
         Returns
         -------
@@ -428,9 +428,9 @@ class TtsNode(Node):
 
         pattern = re.compile(
             r'^\s*'
-            r'<voice_expression\(\s*(.*?)\s*\)>'
+            r'<expression\(\s*(.*?)\s*\)>'
             r'(.*?)'
-            r'</voice_expression>'
+            r'</expression>'
             r'\s*$',
             re.IGNORECASE | re.DOTALL,
         )
