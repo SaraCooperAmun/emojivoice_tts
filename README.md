@@ -32,7 +32,7 @@ Audio + aligned phonemes
       │
       ├── Publish /tts/phoneme
       │
-      └── Publish /tts/viseme
+      └── Publish /tts/visemes
                          │
                          ▼
                     Vizij face
@@ -94,7 +94,6 @@ Your EmojiVoice installation should contain something similar to:
 
 ```text
 <EMOJIVOICE_DIR>/
-
 ├── Matcha-TTS/
 │   └── models/
 │       └── emoji-hri-paige-inference.ckpt
@@ -126,7 +125,6 @@ Then copy `tts_synthesise.py` into the root of your EmojiVoice installation:
 
 ```text
 <EMOJIVOICE_DIR>/
-
 ├── tts_synthesise.py
 ├── Matcha-TTS/
 └── ...
@@ -146,7 +144,7 @@ This provides a simple way to verify that EmojiVoice and the model are working c
 
 ## 4. EmojiVoice configuration
 
-The EmojiVoice Python environment and model path are configured using a ROS 2 YAML configuration file.
+The EmojiVoice Python environment, model path, and viseme mode are configured using a ROS 2 YAML configuration file.
 
 The configuration file is:
 
@@ -161,6 +159,7 @@ tts_node:
   ros__parameters:
     emojivoice_python: "/path/to/emojivoice/bin/python"
     tts_model_path: "/path/to/Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
+    viseme_mode: "normal"
 ```
 
 For example:
@@ -170,6 +169,7 @@ tts_node:
   ros__parameters:
     emojivoice_python: "/home/emorobcare/.local/share/mamba/envs/emojivoice/bin/python"
     tts_model_path: "/home/emorobcare/vizij_project/do_you_feel_me/Matcha-TTS/models/emoji-hri-paige-inference.ckpt"
+    viseme_mode: "normal"
 ```
 
 ### Changing the paths
@@ -186,6 +186,103 @@ No source-code changes are required.
 The worker receives the model path as a command-line argument, while the ROS node starts the worker using the configured EmojiVoice Python interpreter.
 
 The worker path itself does not need to be configured because `emojivoice_worker.py` is located relative to the ROS package.
+
+### Viseme mode
+
+The `viseme_mode` parameter controls how visemes are generated and published.
+
+The available modes are:
+
+```text
+normal
+static
+open_close
+```
+
+#### `normal`
+
+Uses the phoneme alignment returned by EmojiVoice/Matcha-TTS.
+
+Each aligned phoneme is converted into its corresponding facial viseme and published during audio playback.
+
+```yaml
+viseme_mode: "normal"
+```
+
+#### `static`
+
+Disables viseme publication.
+
+The audio and phoneme streams continue to operate normally, but no messages are published on `/tts/visemes`.
+
+```yaml
+viseme_mode: "static"
+```
+
+This mode can be used when the robot face should remain static or when another component is responsible for facial animation.
+
+#### `open_close`
+
+Ignores the individual phoneme alignment for facial animation and generates a simple alternating open/closed mouth sequence during speech.
+
+```yaml
+viseme_mode: "open_close"
+```
+
+The generated sequence alternates between:
+
+```text
+OH  = 13
+SIL = 0
+```
+
+at a fixed interval during the generated audio.
+
+This provides a simple talking-mouth animation without requiring the phoneme-to-viseme mapping.
+
+### Changing the viseme mode at runtime
+
+The viseme mode is a ROS 2 parameter and can be changed while the node is running:
+
+```bash
+ros2 param set /tts_node viseme_mode normal
+```
+
+```bash
+ros2 param set /tts_node viseme_mode static
+```
+
+```bash
+ros2 param set /tts_node viseme_mode open_close
+```
+
+The selected mode is applied to the next utterance.
+
+Check the current value with:
+
+```bash
+ros2 param get /tts_node viseme_mode
+```
+
+The launch file also exposes `viseme_mode` as a launch argument:
+
+```bash
+ros2 launch emojivoice_tts emojivoice_tts.launch.py viseme_mode:=normal
+```
+
+or:
+
+```bash
+ros2 launch emojivoice_tts emojivoice_tts.launch.py viseme_mode:=static
+```
+
+or:
+
+```bash
+ros2 launch emojivoice_tts emojivoice_tts.launch.py viseme_mode:=open_close
+```
+
+The launch argument overrides the value specified in the YAML configuration for that launch.
 
 ---
 
@@ -213,25 +310,29 @@ hri_msgs/msg/Viseme
 
 ```text
 uint8 value
+
 float32 time
+
 float32 duration
 ```
 
 The `value` identifies a normalized phoneme, while `time` and `duration` specify its aligned position in the generated utterance.
 
-### Visemes messages
+### Viseme messages
 
-`Viseme.msg` contains:
+`Visemes.msg` contains:
 
 ```text
 Viseme[] visemes
 ```
 
-`Viseme.msg` contains:
+Each `Viseme.msg` contains:
 
 ```text
 uint8 value
+
 float32 time
+
 float32 duration
 ```
 
@@ -259,10 +360,13 @@ OU  = 14
 
 The phoneme-to-viseme conversion is performed by `tts_node.py`.
 
-The idea is that the TTS cana choose between two options:
+The TTS node supports two general ways of providing viseme information:
 
-1) Publish visemes as thhey need to be played, in which case it should publish one viseme only at the required time (leaving time and duration fields empty)
-2) Compute expected time and duration for all visemes of the sentence and feed all of it in an array
+1. Publish individual visemes as they need to be played during audio playback. In this case, the `time` and `duration` fields are not required for synchronization because the message arrival time represents the playback event.
+
+2. Compute the expected timing of the visemes and provide the timing information in the messages.
+
+The current `normal` implementation publishes aligned visemes progressively during playback. The `open_close` mode generates its own timed open/close sequence.
 
 ---
 
@@ -272,11 +376,8 @@ Whenever the package is changed:
 
 ```bash
 cd ~/vizij_project/ros_ws
-
 source /opt/ros/jazzy/setup.bash
-
 colcon build --packages-select hri_msgs emojivoice_tts --symlink-install
-
 source install/setup.bash
 ```
 
@@ -302,8 +403,15 @@ The launcher:
 2. Loads `config/emojivoice.yaml`.
 3. Provides the EmojiVoice Python environment path.
 4. Provides the EmojiVoice model path.
-5. Starts the EmojiVoice worker.
-6. Loads Matcha-TTS and HiFiGAN.
+5. Provides the `viseme_mode` parameter.
+6. Starts the EmojiVoice worker.
+7. Loads Matcha-TTS and HiFiGAN.
+
+A specific viseme mode can be selected at launch:
+
+```bash
+ros2 launch emojivoice_tts emojivoice_tts.launch.py viseme_mode:=normal
+```
 
 The node provides:
 
@@ -384,21 +492,21 @@ ros2 action send_goal /tts/say communication_skills/action/Say \
 EmojiVoice accepts both emoji and semantic string expressions using the generic format:
 
 ```text
-<voice_expression(EXPRESSION)>text</voice_expression>
+<set expression(EXPRESSION)>text</expression>
 ```
 
 For example:
 
 ```bash
 ros2 action send_goal /tts/say communication_skills/action/Say \
-'{meta: {priority: 128}, input: "<voice_expression(😍)>Hello, I am happy to see you!</voice_expression>"}'
+'{meta: {priority: 128}, input: "<set expression(😍)>Hello, I am happy to see you!</expression>"}'
 ```
 
 Or using a semantic expression name:
 
 ```bash
 ros2 action send_goal /tts/say communication_skills/action/Say \
-'{meta: {priority: 128}, input: "<voice_expression(happy)>Hello, I am happy to see you!</voice_expression>"}'
+'{meta: {priority: 128}, input: "<set expression(happy)>Hello, I am happy to see you!</expression>"}'
 ```
 
 The ROS node extracts the expression and maps it to the corresponding EmojiVoice speaker ID before generating the speech.
@@ -410,19 +518,19 @@ The ROS node extracts the expression and maps it to the corresponding EmojiVoice
 The Dialogue Manager uses the generic syntax:
 
 ```text
-<use voice_expression(EXPRESSION)>text</use>
+<set expression(EXPRESSION)>text</expression>
 ```
 
 For example:
 
 ```text
-<use voice_expression(😍)>Hello!</use>
+<set expression(😍)>Hello!</expression>
 ```
 
 The Dialogue Manager processes this expression and sends the corresponding tagged text to the TTS backend:
 
 ```text
-<voice_expression(😍)>Hello!</voice_expression>
+<set expression(😍)>Hello!</expression>
 ```
 
 EmojiVoice then converts the emoji into its internal speaker ID.
@@ -478,7 +586,7 @@ is generated without an expression.
 An expression is specified using:
 
 ```text
-<voice_expression(😍)>Hello!</voice_expression>
+<set expression(😍)>Hello!</expression>
 ```
 
 The EmojiVoice node converts:
@@ -553,7 +661,7 @@ The published text does **not** contain the voice-expression tag.
 For example:
 
 ```text
-<voice_expression(😍)>Hello!</voice_expression>
+<set expression(😍)>Hello!</expression>
 ```
 
 is published as:
@@ -591,7 +699,9 @@ Each message contains:
 
 ```text
 value
+
 time
+
 duration
 ```
 
@@ -602,10 +712,12 @@ value: 23
 time: 0.0
 duration: 0.0232
 ---
+
 value: 39
 time: 0.0464
 duration: 0.0348
 ---
+
 value: 19
 time: 0.1045
 duration: 0.0348
@@ -633,13 +745,17 @@ Check them with:
 ros2 topic echo /tts/visemes
 ```
 
-Each message contains an array of `Viseme.msg`:
+Each message contains an array of `Viseme.msg` values:
 
 ```text
 value
+
 time
+
 duration
 ```
+
+In `normal` mode, the phoneme-to-viseme mapping is performed during playback. When the timestamp of an aligned phoneme is reached, the corresponding viseme is published.
 
 For example:
 
@@ -648,14 +764,17 @@ value: 12
 time: 0.0
 duration: 0.0232
 ---
+
 value: 12
 time: 0.0464
 duration: 0.0348
 ---
+
 value: 8
 time: 0.1045
 duration: 0.0348
 ---
+
 value: 13
 time: 0.2322
 duration: 0.0348
@@ -667,17 +786,74 @@ For example:
 
 ```text
 Phoneme:
+
     value: 35
     time: 0.2322
     duration: 0.0348
 
 Viseme:
+
     value: 13
     time: 0.2322
     duration: 0.0348
 ```
 
 This allows clients such as Vizij to use the viseme stream directly without having to perform phoneme-to-viseme conversion themselves.
+
+### Viseme modes
+
+The `/tts/visemes` behavior depends on the configured `viseme_mode`.
+
+#### Normal mode
+
+```text
+viseme_mode: normal
+```
+
+EmojiVoice phoneme alignment is used to generate the corresponding visemes.
+
+Visemes are published progressively during audio playback.
+
+#### Static mode
+
+```text
+viseme_mode: static
+```
+
+No `/tts/visemes` messages are published.
+
+The TTS audio and `/tts/phoneme` stream continue to operate normally.
+
+This mode is intended for cases where the face should remain static or where another component controls facial animation.
+
+#### Open/close mode
+
+```text
+viseme_mode: open_close
+```
+
+The aligned phoneme sequence is replaced by a generated alternating mouth sequence.
+
+The sequence alternates between:
+
+```text
+OH  = 13
+SIL = 0
+```
+
+with a fixed interval during speech.
+
+For example:
+
+```text
+time: 0.12  value: 13
+time: 0.24  value: 0
+time: 0.36  value: 13
+time: 0.48  value: 0
+...
+```
+
+The open/close sequence lasts for the duration of the generated audio.
 
 ---
 
@@ -701,7 +877,7 @@ Generate audio with EmojiVoice
 Start audio playback   │
         │               │
         ▼               │
-Measure playback time   │
+Measure playback time  │
         │               │
         ├── /tts/phoneme
         │
@@ -728,7 +904,7 @@ A phoneme is published when its aligned timestamp is reached:
 elapsed = time.monotonic() - playback_start
 ```
 
-The corresponding viseme is published at the same time.
+The corresponding viseme is published at the same time when viseme publication is enabled.
 
 Therefore, Vizij does not need to reconstruct the speech timing from `/tts/speech`.
 
@@ -749,24 +925,24 @@ Vizij uses the `/tts/visemes` topic as the real-time facial animation stream.
 The intended architecture is:
 
 ```text
-                 ROS 2
-                   │
-                   │ /tts/say
-                   ▼
-           ┌─────────────────┐
-           │  emojivoice_tts │
-           └─────────────────┘
-                   │
-          ┌────────┴────────┐
-          │                 │
-          ▼                 ▼
-       Speaker         /tts/visemes
-                            │
-                            ▼
-                       Vizij Rust
-                            │
-                            ▼
-                       Face shapes
+                ROS 2
+                  │
+                  │ /tts/say
+                  ▼
+          ┌─────────────────┐
+          │  emojivoice_tts │
+          └─────────────────┘
+                  │
+         ┌────────┴────────┐
+         │                 │
+         ▼                 ▼
+      Speaker         /tts/visemes
+                           │
+                           ▼
+                      Vizij Rust
+                           │
+                           ▼
+                      Face shapes
 ```
 
 The TTS node remains responsible for:
@@ -794,19 +970,25 @@ This avoids playing the same utterance twice and ensures that the face animation
 
 ---
 
-## 18. Final silence
+# 18. Final silence
 
-A final `SIL` viseme is used to return the face to its neutral/resting mouth shape when an utterance finishes.
+In `normal` and `open_close` modes, a final `SIL` viseme is used to return the face to its neutral/resting mouth shape when an utterance finishes.
 
 The sequence is therefore:
 
 ```text
 speech
+
   │
+
   ├── viseme
+
   ├── viseme
+
   ├── viseme
+
   ├── ...
+
   └── SIL
 ```
 
@@ -818,9 +1000,11 @@ The `SIL` value is:
 Viseme.SIL = 0
 ```
 
+In `static` mode, **no final `SIL` viseme is published**, because `/tts/visemes` publication is disabled entirely.
+
 ---
 
-## 19. Playback delay
+# 19. Playback delay
 
 The current implementation contains a 2.0 second delay immediately before playback:
 
@@ -884,6 +1068,7 @@ Responsible for:
 * `/robot_speaking`
 * communicating with the EmojiVoice worker
 * phoneme → viseme conversion
+* viseme mode handling
 
 ### `emojivoice_worker.py`
 
@@ -905,10 +1090,11 @@ Contains machine-specific configuration:
 
 * EmojiVoice Python interpreter
 * EmojiVoice Matcha-TTS model path
+* default viseme mode
 
 ### `launch/emojivoice_tts.launch.py`
 
-Starts `tts_node` and loads the EmojiVoice configuration.
+Starts `tts_node`, loads the EmojiVoice configuration, and exposes the `viseme_mode` launch argument.
 
 ---
 
@@ -920,14 +1106,21 @@ The architecture is therefore:
 
 ```text
 ROS 2 Jazzy
+
 Python 3.12
+
     │
     │ subprocess
     ▼
+
 EmojiVoice environment
+
 Python 3.11
+
     │
+
     ├── Matcha-TTS
+
     └── HiFiGAN
 ```
 
@@ -960,6 +1153,12 @@ Expected topics include:
 /tts/visemes
 ```
 
+### Check the current viseme mode
+
+```bash
+ros2 param get /tts_node viseme_mode
+```
+
 ### Test phonemes
 
 In one terminal:
@@ -972,17 +1171,21 @@ RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/phoneme
 
 Then send speech from another terminal.
 
-### Test visemes
+### Test normal visemes
 
-In another terminal:
+Set:
 
 ```bash
-source ~/vizij_project/ros_ws/install/setup.bash
+ros2 param set /tts_node viseme_mode normal
+```
 
+Then:
+
+```bash
 RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/visemes
 ```
 
-Then send:
+Send:
 
 ```bash
 ros2 action send_goal /tts/say communication_skills/action/Say \
@@ -991,16 +1194,65 @@ ros2 action send_goal /tts/say communication_skills/action/Say \
 
 The `/tts/visemes` messages should appear progressively during playback.
 
-The timestamps should increase from approximately:
+### Test static mode
+
+Set:
+
+```bash
+ros2 param set /tts_node viseme_mode static
+```
+
+Then monitor:
+
+```bash
+RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/visemes
+```
+
+Send speech.
+
+No `/tts/visemes` messages should be published in this mode.
+
+The audio and `/tts/phoneme` stream should continue normally.
+
+### Test open/close mode
+
+Set:
+
+```bash
+ros2 param set /tts_node viseme_mode open_close
+```
+
+Then monitor:
+
+```bash
+RMW_IMPLEMENTATION=rmw_zenoh_cpp ros2 topic echo /tts/visemes
+```
+
+Send:
+
+```bash
+ros2 action send_goal /tts/say communication_skills/action/Say \
+'{meta: {priority: 128}, input: "Hello, I am a talking face."}'
+```
+
+The viseme stream should alternate between:
 
 ```text
-0.0
-0.04
-0.10
+value: 13
+value: 0
+value: 13
+value: 0
 ...
 ```
 
-rather than all messages being generated only after playback has finished.
+where:
+
+```text
+13 = OH
+0  = SIL
+```
+
+The sequence is generated according to the duration of the generated audio.
 
 ---
 
@@ -1025,6 +1277,28 @@ The node should appear as:
 ```text
 /tts_node
 ```
+
+### Check the current viseme mode
+
+```bash
+ros2 param get /tts_node viseme_mode
+```
+
+To change it without restarting the node:
+
+```bash
+ros2 param set /tts_node viseme_mode normal
+```
+
+```bash
+ros2 param set /tts_node viseme_mode static
+```
+
+```bash
+ros2 param set /tts_node viseme_mode open_close
+```
+
+The selected mode applies to subsequent speech.
 
 ### Check speech metadata
 
@@ -1060,7 +1334,7 @@ ros2 interface show hri_msgs/msg/Visemes
 
 ```bash
 ros2 action send_goal /tts/say communication_skills/action/Say \
-'{meta: {priority: 128}, input: "<voice_expression(😍)>Hello, how are you?</voice_expression>"}' \
+'{meta: {priority: 128}, input: "<set expression(😍)>Hello, how are you?</expression>"}' \
 --feedback
 ```
 
@@ -1068,7 +1342,9 @@ Expected logs include:
 
 ```text
 Voice expression detected: '😍' -> EmojiVoice emotion 107
+
 Clean speech text: 'Hello, how are you?'
+
 Speech emotion: '107'
 ```
 

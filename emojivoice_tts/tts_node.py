@@ -221,6 +221,7 @@ class TtsNode(Node):
         )
         self.declare_parameter('frame_id', '')
         self.declare_parameter('language', 'en')
+        self.declare_parameter('viseme_mode', 'normal')
 
         self.frame_id = (
             self.get_parameter('frame_id')
@@ -230,6 +231,12 @@ class TtsNode(Node):
 
         self._language = (
             self.get_parameter('language')
+            .get_parameter_value()
+            .string_value
+        )
+
+        self._viseme_mode = (
+            self.get_parameter('viseme_mode')
             .get_parameter_value()
             .string_value
         )
@@ -545,8 +552,12 @@ class TtsNode(Node):
         viseme.value = value
 
         msg.visemes.append(viseme)
+        viseme_mode = self.get_parameter(
+            'viseme_mode'
+        ).get_parameter_value().string_value
 
-        self.viseme_publisher.publish(msg)
+        if viseme_mode != 'static':
+            self.viseme_publisher.publish(msg)
     # ==============================================================
     # Playback
     #
@@ -651,16 +662,23 @@ class TtsNode(Node):
                         ) <= elapsed
                     ):
                         last_phoneme_index += 1
-
                         phoneme = phonemes[
                             last_phoneme_index
                         ]
 
-                        self.publish_phoneme(
-                            phoneme['value'],
-                            phoneme['time'],
-                            phoneme['duration'],
-                        )
+                        if self._viseme_mode == 'open_close':
+                            # The generated sequence already contains viseme values.
+                            self.publish_viseme(phoneme['value'])
+                            self.get_logger().info(
+                                f"Open/close viseme: {phoneme['value']}"
+                            )
+                        else:
+                            # Normal EmojiVoice phoneme -> viseme pipeline.
+                            self.publish_phoneme(
+                                phoneme['value'],
+                                phoneme['time'],
+                                phoneme['duration'],
+                            )
 
                 # --------------------------------------------------
                 # Word-level feedback
@@ -719,7 +737,13 @@ class TtsNode(Node):
 
             sd.wait()
             # send a silent SIL
-            self.publish_viseme(Viseme.SIL)
+            viseme_mode = self.get_parameter(
+                'viseme_mode'
+            ).get_parameter_value().string_value
+
+            if viseme_mode != 'static':
+                self.publish_viseme(Viseme.SIL)
+
             return True
 
         except Exception as exc:
@@ -758,7 +782,7 @@ class TtsNode(Node):
             phoneme_value,
             Viseme.SIL,
         )
-
+        self.get_logger().info(f"{viseme_value}")
         self.publish_viseme(viseme_value)
 
     def publish_speech_metadata(
@@ -827,6 +851,33 @@ class TtsNode(Node):
         )
 
         return CancelResponse.ACCEPT
+
+    def generate_open_close_sequence(self, duration_sec):
+        SIL = 0
+        OH = 13
+        step = 0.12
+
+        sequence = []
+        current_time = 0.0
+        open_mouth = True
+
+        while current_time < duration_sec:
+            current_time += step
+
+            if current_time >= duration_sec:
+                current_time = duration_sec
+
+            value = OH if open_mouth else SIL
+
+            sequence.append({
+                'time': current_time,
+                'value': value,
+                'duration': step,
+            })
+
+            open_mouth = not open_mouth
+
+        return sequence
 
     # ==============================================================
     # Say execution
@@ -905,7 +956,14 @@ class TtsNode(Node):
                     text,
                     emotion,
                 )
+                viseme_mode = self.get_parameter('viseme_mode').get_parameter_value().string_value
 
+                if viseme_mode == 'static':
+                    phonemes = []
+                elif viseme_mode == 'open_close':
+                    self.get_logger().info("its openclose")
+                    phonemes = self.generate_open_close_sequence(duration)
+                    self.get_logger().info(str(phonemes))
             except Exception as exc:
 
                 self.get_logger().error(
